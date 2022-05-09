@@ -1,0 +1,198 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r,echo=FALSE}
+rm(list=ls()) 
+```
+
+### Coding model 
+
+#### Four classes of individuals: susceptible (S), L-infected (L, or 'non-superspreaders'), H-infected (H, or 'superspreaders') and recovered (R) 
+
+```{r}
+library(deSolve)
+
+SIR.dyn<-function(t,y,parms) 
+{
+  with(as.list(c(y,parms)),
+       {
+         #Derivatives
+         dS<-(-beta.L*S)*(L+(p*H))
+         dL<-(beta.L*S)*(((1-sigma.L)*L)+(p*(1-sigma.H)*H))-((alpha+gamma)*L)
+         dH<-(beta.L*S)*((sigma.L*L)+(sigma.H*p*H))-((alpha+gamma)*H) 
+         dR<-gamma*(H+L)
+         
+         #Return 4 values
+         return(list(c(dS,dL,dH,dR)))
+       })
+}
+```
+### Running model 
+
+##### Choosing a range of values for two parameters: 
+##### sigma.H = 0.05 (same as sigma.L)-1 so sigma.H/sigma.L = 1-20
+##### p = 1-20
+
+```{r}
+n<-250 #n = number of values per parameter
+sigma.H<-seq(0.05,1,length.out = n)
+p<-seq(1,20,length.out = n)
+```
+
+##### Choosing a range of 3 initial frequencies for H-infecteds. Varying from 0-10% of population so no more than L-infecteds (see below)
+
+```{r}
+H.init<-seq(0,0.1,0.05)
+```
+
+##### Creating objects into which to save
+
+```{r}
+data_final_epidemic<-list()
+data_R0<-list()
+data_H_peak<-list()
+```
+
+```{r}
+for(k in 1:length(H.init))
+{
+  data_final_epidemic[[k]] <- matrix(,n,n)
+  data_R0[[k]] <- matrix(,n,n)
+  data_H_peak[[k]] <- matrix(,n,n)
+  for (i in 1:n)
+  { 
+    for (j in 1:n)
+    {
+      #Setting other parameter values
+      #alpha - death rate due to disease - assume no excess death due to infection 
+      alpha<-0
+      #gamma - recovery rate - assume an average infectious period of one week
+      gamma<-0.1
+      #sigma.L - proportion of infections from L-infected that result in H-infected - set at 0.05
+      sigma.L<-0.05
+      #beta.L - baseline transmission rate arising from L-infecteds 
+      beta.L<-0.000008
+      SIR.par<-c(p = p[j], sigma.H = sigma.H[i], sigma.L = sigma.L, alpha = alpha, gamma = gamma, beta.L = beta.L)
+      
+      #Initial values
+      #N = total population size =  10,000 - population size of a small town in the UK
+      N<-10000
+      #Initial number of L-infecteds set to 10% of the total population size
+      L<-0.1
+      #Varying initial numver of H-infecteds from 0 - 10% (see above)
+      SIR.init<-c(S = N*(1-L-H.init[k]), L = N*L, H = N*H.init[k], R = 0) 
+      
+      #Time vector
+      #This is long enough to ensure that the epidemic have completed in all cases
+      SIR.t<-seq(0,150,0.5)
+      
+      #Finding the numerical solution 
+      SIR.sol<-lsoda(y=SIR.init,times=SIR.t,func=SIR.dyn,parms=SIR.par)
+      
+      TIME<-SIR.sol[,1]
+      S<-SIR.sol[,2]
+      L<-SIR.sol[,3]
+      H<-SIR.sol[,4]
+      R<-SIR.sol[,5]
+      
+      #Calculating the final epidemic size 
+      total.infected<-N-S[which.max(TIME)]
+      #Saving into matrix as proportion (where the maximum is 1, reflecting everyone in the population becoming infected)
+      data_final_epidemic[[k]][i,j]<-total.infected/N
+      
+      #Calculating R0 using equation, arrived at using next generation method of Diekmann et al. 2010, doi: 10.1098/rsif.2009.0386
+      R0<-((N*beta.L)*(1+(p[j]*sigma.H[i])-sigma.L+sqrt((sigma.L-1-(p[j]*sigma.H[i]))^2-((4*p[j])*(sigma.H[i]-sigma.L)))))/(2*(alpha+gamma))
+     #Saving into matrix  
+      data_R0[[k]][i,j]<-R0
+    
+      #Calculating peak prevalence of H-infecteds
+      H.peak<-max(H)
+      #Saving into matrix as a proportion of the total population size, N  
+      data_H_peak[[k]][i,j]<-H.peak/N
+      
+    }
+  }
+}
+```
+
+### Plotting 
+
+##### Final epidemic size - Contour plots
+
+```{r,message=FALSE}
+library(plotly)
+l <- htmltools::tagList()
+label<-c('<b>a<b>','<b>b<b>','<b>c<b>')
+
+for(i in 1:length(data_final_epidemic)){
+  l[[i]]<-plot_ly(x=p,y=sigma.H/sigma.L,z = data_final_epidemic[[i]], type = "contour",contours = list(showlabels = TRUE, start=0.3,end=1,size=0.1,labelfont = list(size = 20, color = 'white')),line = list(width = 1, color = 'white'))
+  l[[i]] <- l[[i]] %>% colorbar(title = "Final epidemic \nsize",tickfont = list(size = 25),titlefont = list(size = 25))
+  l[[i]] <- l[[i]] %>% layout(xaxis = list(title = "",dtick = 5,tickfont = list(size = 25)), yaxis = list(title = "",dtick=5,tickfont = list(size = 25)),annotations = list(x = 0 , y = 1, text = label[i], showarrow=T, arrowcolor='white', xref='paper', yref='paper',font = list(size = 35)),margin=1)
+}
+
+l[[1]] <- l[[1]] %>% layout(yaxis = list(title = "Strength of positive feedback loop \n(<i>\u03c3<sub>H</sub>/\u03c3<sub>L</sub></i>)",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)))
+l[[2]] <- l[[2]] %>% layout(xaxis = list(title = "Transmission advantage of superspreaders (<i>p</i>)",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)))
+
+#Compiling all plots 
+o <- subplot(l[[1]], hide_colorbar(l[[2]]), hide_colorbar(l[[3]]), nrows = 1, shareX=T, shareY = F, titleY = T) 
+
+o
+
+#Exporting high quality vector file 
+orca(o, file = "Fig1_new.pdf",width=1650, height=600)
+
+```
+
+##### Peak prevalence of H-infecteds - Contour plots
+
+```{r,message=FALSE}
+library(plotly)
+n <- htmltools::tagList()
+label<-c('<b>d<b>','<b>e<b>','<b>f<b>')
+
+for(i in 1:length(data_H_peak)){
+  n[[i]]<-plot_ly(x=p,y=sigma.H/sigma.L,z = data_H_peak[[i]], type = "contour",contours = list(showlabels = TRUE, start=0,end=0.7,size=0.05,labelfont = list(size = 20, color = 'white')),line = list(width = 1, color = 'white'))
+  n[[i]] <- n[[i]] %>% colorbar(title = "Peak superspreader \nprevalence",tickfont = list(size = 25),titlefont = list(size = 25))
+  n[[i]] <- n[[i]] %>% layout(xaxis = list(title = "",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)), yaxis = list(title = "",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)), annotations = list(x = 0 , y = 1, text = label[i], showarrow=T, arrowcolor='white', xref='paper', yref='paper',font = list(size = 35)),margin=1)
+}
+
+n[[1]] <- n[[1]] %>% layout(yaxis = list(title = "Strength of positive feedback loop \n(<i>\u03c3<sub>H</sub>/\u03c3<sub>L</sub></i>)",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)))
+n[[2]] <- n[[2]] %>% layout(xaxis = list(title = "Transmission advantage of superspreaders (<i>p</i>)",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)))
+
+#Compiling all plots 
+o <- subplot(n[[1]], hide_colorbar(n[[2]]), hide_colorbar(n[[3]]), nrows = 1, shareX=T, shareY = F,titleY = T)
+
+o
+
+#Exporting high quality vector file 
+orca(o, file = "Fig3_new.pdf",width=1650, height=600)
+
+```
+
+##### R0 - Contour plots
+
+NB/ R0 does *not* depend on the initial number of H-infecteds
+
+```{r,message=FALSE}
+library(plotly)
+m <- htmltools::tagList()
+
+for(i in 1:1){
+  m[[i]]<-plot_ly(x=p,y=sigma.H/sigma.L,z = data_R0[[i]], type = "contour",contours = list(showlabels = TRUE,start = 0, end = 16, size = 1, labelfont = list(size = 20, color = 'white')),line = list(width = 1, color = 'white'))
+  m[[i]] <- m[[i]] %>% colorbar(title = "<i>R<sub>0<sub></i>",tickfont = list(size = 25),titlefont = list(size = 25))
+  m[[i]] <- m[[i]] %>% layout(xaxis = list(title = "Transmission advantage of superspreaders (<i>p</i>)",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)), yaxis = list(title = "Strength of positive feedback loop \n(<i>\u03c3<sub>H</sub>/\u03c3<sub>L</sub></i>)",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)))
+}
+
+m
+
+#Exporting high quality vector file 
+orca(m[[1]], file = "Fig2_new.pdf",width=700,height=600)
+
+```
+
+
+
+
