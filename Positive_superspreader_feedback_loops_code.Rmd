@@ -37,7 +37,7 @@ SIR.dyn<-function(t,y,parms)
 ##### p = 1-20
 
 ```{r}
-n<-250 #n = number of values per parameter
+n<-1000 #n = number of values per parameter
 sigma.H<-seq(0.05,1,length.out = n)
 p<-seq(1,20,length.out = n)
 ```
@@ -62,6 +62,7 @@ for(k in 1:length(H.init))
   data_final_epidemic[[k]] <- matrix(,n,n)
   data_R0[[k]] <- matrix(,n,n)
   data_H_peak[[k]] <- matrix(,n,n)
+  data_HIT[[k]] <- matrix(,n,n)
   for (i in 1:n)
   { 
     for (j in 1:n)
@@ -82,7 +83,7 @@ for(k in 1:length(H.init))
       N<-10000
       #Initial number of L-infecteds set to 10% of the total population size
       L<-0.1
-      #Varying initial numver of H-infecteds from 0 - 10% (see above)
+      #Varying initial number of H-infecteds from 0 - 10% (see above)
       SIR.init<-c(S = N*(1-L-H.init[k]), L = N*L, H = N*H.init[k], R = 0) 
       
       #Time vector
@@ -105,13 +106,19 @@ for(k in 1:length(H.init))
       
       #Calculating R0 using equation, arrived at using next generation method of Diekmann et al. 2010, doi: 10.1098/rsif.2009.0386
       R0<-((N*beta.L)*(1+(p[j]*sigma.H[i])-sigma.L+sqrt((sigma.L-1-(p[j]*sigma.H[i]))^2-((4*p[j])*(sigma.H[i]-sigma.L)))))/(2*(alpha+gamma))
-     #Saving into matrix  
+      #Saving into matrix  
       data_R0[[k]][i,j]<-R0
     
       #Calculating peak prevalence of H-infecteds
       H.peak<-max(H)
       #Saving into matrix as a proportion of the total population size, N  
       data_H_peak[[k]][i,j]<-H.peak/N
+      
+      #Calculating herd immunity threshold
+      (maxI=which.max(L+H))
+      HIT <- 1 - S[maxI]/N
+      #Saving into matrix 
+      data_HIT[[k]][i,j]<-HIT
       
     }
   }
@@ -125,16 +132,16 @@ for(k in 1:length(H.init))
 ```{r,message=FALSE}
 library(plotly)
 l <- htmltools::tagList()
-label<-c('<b>a<b>','<b>b<b>','<b>c<b>')
+label<-c('<b>A<b>','<b>B<b>','<b>C<b>')
 
 for(i in 1:length(data_final_epidemic)){
-  l[[i]]<-plot_ly(x=p,y=sigma.H/sigma.L,z = data_final_epidemic[[i]], type = "contour",contours = list(showlabels = TRUE, start=0.3,end=1,size=0.1,labelfont = list(size = 20, color = 'white')),line = list(width = 1, color = 'white'))
+  l[[i]]<-plot_ly(x=p,y=sigma.H/sigma.L,z = data_final_epidemic[[i]], type = "contour",contours = list(showlabels = FALSE, start=0.3,end=1,size=0.1,labelfont = list(size = 20, color = 'white')),line = list(width = 0, color = 'white'))
   l[[i]] <- l[[i]] %>% colorbar(title = "Final epidemic \nsize",tickfont = list(size = 25),titlefont = list(size = 25))
-  l[[i]] <- l[[i]] %>% layout(xaxis = list(title = "",dtick = 5,tickfont = list(size = 25)), yaxis = list(title = "",dtick=5,tickfont = list(size = 25)),annotations = list(x = 0 , y = 1, text = label[i], showarrow=T, arrowcolor='white', xref='paper', yref='paper',font = list(size = 35)),margin=1)
+  l[[i]] <- l[[i]] %>% layout(xaxis = list(title = "",dtick = 5,tickfont = list(size = 25)), yaxis = list(title = "",dtick=5,tickfont = list(size = 25)),annotations = list(x = 0 , y = 1, showarrow=T, arrowcolor='white', xref='paper', yref='paper',font = list(size = 35)),margin=1)
 }
 
 l[[1]] <- l[[1]] %>% layout(yaxis = list(title = "Strength of positive feedback loop \n(<i>\u03c3<sub>H</sub>/\u03c3<sub>L</sub></i>)",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)))
-l[[2]] <- l[[2]] %>% layout(xaxis = list(title = "Transmission advantage of superspreaders (<i>p</i>)",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)))
+l[[2]] <- l[[2]] %>% layout(xaxis = list(title = "Transmission advantage of SS \n(<i>p</i>)",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)))
 
 #Compiling all plots 
 o <- subplot(l[[1]], hide_colorbar(l[[2]]), hide_colorbar(l[[3]]), nrows = 1, shareX=T, shareY = F, titleY = T) 
@@ -142,33 +149,33 @@ o <- subplot(l[[1]], hide_colorbar(l[[2]]), hide_colorbar(l[[3]]), nrows = 1, sh
 o
 
 #Exporting high quality vector file 
-orca(o, file = "Fig1_new.pdf",width=1650, height=600)
+orca(o, file = "Fig1.pdf",width=1650, height=600)
 
 ```
 
-##### Peak prevalence of H-infecteds - Contour plots
+##### Herd immunity threshold - Contour plots
 
 ```{r,message=FALSE}
 library(plotly)
-n <- htmltools::tagList()
-label<-c('<b>d<b>','<b>e<b>','<b>f<b>')
+l <- htmltools::tagList()
+label<-c('<b>A<b>','<b>B<b>','<b>C<b>')
 
-for(i in 1:length(data_H_peak)){
-  n[[i]]<-plot_ly(x=p,y=sigma.H/sigma.L,z = data_H_peak[[i]], type = "contour",contours = list(showlabels = TRUE, start=0,end=0.7,size=0.05,labelfont = list(size = 20, color = 'white')),line = list(width = 1, color = 'white'))
-  n[[i]] <- n[[i]] %>% colorbar(title = "Peak superspreader \nprevalence",tickfont = list(size = 25),titlefont = list(size = 25))
-  n[[i]] <- n[[i]] %>% layout(xaxis = list(title = "",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)), yaxis = list(title = "",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)), annotations = list(x = 0 , y = 1, text = label[i], showarrow=T, arrowcolor='white', xref='paper', yref='paper',font = list(size = 35)),margin=1)
+for(i in 1:length(data_HIT)){
+  l[[i]]<-plot_ly(x=p,y=sigma.H/sigma.L,z = data_HIT[[i]], type = "contour",contours = list(showlabels = FALSE, start=0.3,end=1,size=0.1,labelfont = list(size = 20, color = 'white')),line = list(width = 0, color = 'white'))
+  l[[i]] <- l[[i]] %>% colorbar(title = "Herd immunity \nthreshold",tickfont = list(size = 25),titlefont = list(size = 25))
+  l[[i]] <- l[[i]] %>% layout(xaxis = list(title = "",dtick = 5,tickfont = list(size = 25)), yaxis = list(title = "",dtick=5,tickfont = list(size = 25)),annotations = list(x = 0 , y = 1, text = label[i], showarrow=T, arrowcolor='white', xref='paper', yref='paper',font = list(size = 35)),margin=1)
 }
 
-n[[1]] <- n[[1]] %>% layout(yaxis = list(title = "Strength of positive feedback loop \n(<i>\u03c3<sub>H</sub>/\u03c3<sub>L</sub></i>)",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)))
-n[[2]] <- n[[2]] %>% layout(xaxis = list(title = "Transmission advantage of superspreaders (<i>p</i>)",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)))
+l[[1]] <- l[[1]] %>% layout(yaxis = list(title = "Strength of positive feedback loop \n(<i>\u03c3<sub>H</sub>/\u03c3<sub>L</sub></i>)",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)))
+l[[2]] <- l[[2]] %>% layout(xaxis = list(title = "Transmission advantage of SS \n(<i>p</i>)",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)))
 
 #Compiling all plots 
-o <- subplot(n[[1]], hide_colorbar(n[[2]]), hide_colorbar(n[[3]]), nrows = 1, shareX=T, shareY = F,titleY = T)
+o <- subplot(l[[1]], hide_colorbar(l[[2]]), hide_colorbar(l[[3]]), nrows = 1, shareX=T, shareY = F, titleY = T) 
 
 o
 
 #Exporting high quality vector file 
-orca(o, file = "Fig3_new.pdf",width=1650, height=600)
+orca(o, file = "Fig2.pdf",width=1650, height=600)
 
 ```
 
@@ -181,18 +188,40 @@ library(plotly)
 m <- htmltools::tagList()
 
 for(i in 1:1){
-  m[[i]]<-plot_ly(x=p,y=sigma.H/sigma.L,z = data_R0[[i]], type = "contour",contours = list(showlabels = TRUE,start = 0, end = 16, size = 1, labelfont = list(size = 20, color = 'white')),line = list(width = 1, color = 'white'))
-  m[[i]] <- m[[i]] %>% colorbar(title = "<i>R<sub>0<sub></i>",tickfont = list(size = 25),titlefont = list(size = 25))
-  m[[i]] <- m[[i]] %>% layout(xaxis = list(title = "Transmission advantage of superspreaders (<i>p</i>)",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)), yaxis = list(title = "Strength of positive feedback loop \n(<i>\u03c3<sub>H</sub>/\u03c3<sub>L</sub></i>)",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)))
+  m[[i]]<-plot_ly(x=p,y=sigma.H/sigma.L,z = data_R0[[i]], type = "contour",contours = list(showlabels = FALSE,start = 0, end = 16, size = 1, labelfont = list(size = 20, color = 'white')),line = list(width = 0, color = 'white'))
+  m[[i]] <- m[[i]] %>% colorbar(title = "Basic reproduction \nnumber (<i>R<sub>0</sub></i>)",tickfont = list(size = 25),titlefont = list(size = 25))
+  m[[i]] <- m[[i]] %>% layout(xaxis = list(title = "Transmission advantage of SS \n(<i>p</i>)",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)), yaxis = list(title = "Strength of positive feedback loop \n(<i>\u03c3<sub>H</sub>/\u03c3<sub>L</sub></i>)",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)))
 }
 
 m
 
 #Exporting high quality vector file 
-orca(m[[1]], file = "Fig2_new.pdf",width=700,height=600)
+orca(m[[1]], file = "Fig3.pdf",width=850,height=600)
 
 ```
 
+##### Peak prevalence of H-infecteds - Contour plots
 
+```{r,message=FALSE}
+library(plotly)
+n <- htmltools::tagList()
+label<-c('<b>A<b>','<b>B<b>','<b>C<b>')
 
+for(i in 1:length(data_H_peak)){
+  n[[i]]<-plot_ly(x=p,y=sigma.H/sigma.L,z = data_H_peak[[i]], type = "contour",contours = list(showlabels = FALSE, start=0,end=0.7,size=0.05,labelfont = list(size = 20, color = 'white')),line = list(width = 0, color = 'white'))
+  n[[i]] <- n[[i]] %>% colorbar(title = "Peak SS \nprevalence",tickfont = list(size = 25),titlefont = list(size = 25))
+  n[[i]] <- n[[i]] %>% layout(xaxis = list(title = "",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)), yaxis = list(title = "",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)), annotations = list(x = 0 , y = 1, text = label[i], showarrow=T, arrowcolor='white', xref='paper', yref='paper',font = list(size = 35)),margin=1)
+}
 
+n[[1]] <- n[[1]] %>% layout(yaxis = list(title = "Strength of positive feedback loop \n(<i>\u03c3<sub>H</sub>/\u03c3<sub>L</sub></i>)",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)))
+n[[2]] <- n[[2]] %>% layout(xaxis = list(title = "Transmission advantage of SS  \n(<i>p</i>)",dtick = 5,tickfont = list(size = 25),titlefont = list(size = 25)))
+
+#Compiling all plots 
+o <- subplot(n[[1]], hide_colorbar(n[[2]]), hide_colorbar(n[[3]]), nrows = 1, shareX=T, shareY = F,titleY = T)
+
+o
+
+#Exporting high quality vector file 
+orca(o, file = "Fig4.pdf",width=1650, height=600)
+
+```
